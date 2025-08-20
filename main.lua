@@ -1,3 +1,24 @@
+--// ===================================================================================
+--// --- Cleanup routine to prevent duplicates when re-executing ---
+--// ===================================================================================
+pcall(function()
+	if _G.AimESP_RS_CONN and _G.AimESP_RS_CONN.Connected then
+		_G.AimESP_RS_CONN:Disconnect()
+	end
+	if _G.AimESP_FOV_CIRCLE then
+		_G.AimESP_FOV_CIRCLE:Remove()
+	end
+	local playerGui = game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+	local coreGui = game:GetService("CoreGui")
+	if playerGui and playerGui:FindFirstChild("AimESP_UI") then
+		playerGui:FindFirstChild("AimESP_UI"):Destroy()
+	end
+	if coreGui and coreGui:FindFirstChild("AimESP_UI") then
+		coreGui:FindFirstChild("AimESP_UI"):Destroy()
+	end
+end)
+
+
 --// Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -34,6 +55,7 @@ local settings = {
 	
 	-- Misc
 	walkSpeed = 16,
+	noclipEnabled = false, -- <-- NEW
 
 	-- Keybinds (New)
 	keybinds = {
@@ -94,6 +116,7 @@ local function disableFly()
 	end
 	if humanoid then
 		pcall(function() humanoid.PlatformStand = false end)
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 		local animate = hrp and hrp.Parent and hrp:FindFirstChild("Animate")
 		if animate then pcall(function() animate.Disabled = false end) end
 	end
@@ -105,6 +128,42 @@ local function setFlyEnabled(v)
 		enableFly()
 	else
 		disableFly()
+	end
+end
+
+--// Noclip runtime state <-- NEW SECTION
+local noclipConnection = nil
+
+local function setNoclipEnabled(enabled)
+	settings.noclipEnabled = enabled
+	if noclipConnection then
+		noclipConnection:Disconnect()
+		noclipConnection = nil
+	end
+	local char = LocalPlayer.Character
+	if not char then return end
+
+	if enabled then
+		noclipConnection = RunService.Stepped:Connect(function()
+			if not settings.noclipEnabled or not LocalPlayer.Character then
+				if noclipConnection then
+					noclipConnection:Disconnect()
+					noclipConnection = nil
+				end
+				return
+			end
+			for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+		end)
+	else
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+			end
+		end
 	end
 end
 
@@ -124,9 +183,16 @@ local function onCharacterAdded(char)
 	else
 		disableFly()
 	end
+	if settings.noclipEnabled then -- <-- NEW: Re-apply noclip on respawn
+		setNoclipEnabled(true)
+	end
 	if humanoid then
 		humanoid.Died:Connect(function()
 			disableFly()
+			if noclipConnection then -- <-- NEW: Clean up noclip on death
+				noclipConnection:Disconnect()
+				noclipConnection = nil
+			end
 		end)
 	end
 end
@@ -162,6 +228,7 @@ fovCircle.NumSides = 64
 fovCircle.Radius = settings.aimRadius
 fovCircle.Visible = settings.fovCircle
 fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+_G.AimESP_FOV_CIRCLE = fovCircle -- Store reference for cleanup
 
 local function screenPoint(v3)
 	local v2, on = Camera:WorldToViewportPoint(v3)
@@ -349,9 +416,10 @@ local function aimAt(model)
 	if s >= 1 then Camera.CFrame = desired else Camera.CFrame = Camera.CFrame:Lerp(desired, math.clamp(s, 0.05, 0.99)) end
 end
 
+local guiElements = {}
 --// --- FIXED: Consolidated Input Handling ---
 UIS.InputBegan:Connect(function(input, gpe)
-	if gpe or (main and main:FindFirstChild("Pages") and main.Pages:FindFirstChild("Settings") and main.Pages.Settings.ConfigTextBox:IsFocused()) then return end
+	if gpe then return end
 	if listeningForKeybind then
 		settings.keybinds[listeningForKeybind.Name] = input.KeyCode
 		listeningForKeybind.Text = tostring(input.KeyCode.Name)
@@ -359,8 +427,19 @@ UIS.InputBegan:Connect(function(input, gpe)
 		return
 	end
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then holdingRMB = true end
-	if input.KeyCode == settings.keybinds.toggleFly then setFlyEnabled(not settings.flyEnabled) end
-	if input.KeyCode == settings.keybinds.toggleGUI then if _G.__AimESP_MainFrame then _G.__AimESP_MainFrame.Visible = not _G.__AimESP_MainFrame.Visible end end
+	
+	--// --- Keybind Logic ---
+	if input.KeyCode == settings.keybinds.toggleFly then
+		setFlyEnabled(not settings.flyEnabled)
+		if guiElements.flyEnabled and guiElements.flyEnabled.Update then
+			guiElements.flyEnabled.Update() -- Update visual state of the button
+		end
+	end
+	if input.KeyCode == settings.keybinds.toggleGUI then
+		if _G.__AimESP_MainFrame then
+			_G.__AimESP_MainFrame.Visible = not _G.__AimESP_MainFrame.Visible
+		end
+	end
 end)
 UIS.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then holdingRMB = false end end)
 
@@ -382,6 +461,7 @@ rsConn = RunService.RenderStepped:Connect(function(delta)
 		flyBG.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
 	end
 end)
+_G.AimESP_RS_CONN = rsConn -- Store reference for cleanup
 
 --// GUI creation
 local sg = Instance.new("ScreenGui"); sg.Name = "AimESP_UI"; sg.ResetOnSpawn = false; sg.IgnoreGuiInset = true; sg.ZIndexBehavior = Enum.ZIndexBehavior.Global
@@ -389,7 +469,7 @@ local function safeParentGui(gui) local ok, cg = pcall(function() return game:Ge
 safeParentGui(sg)
 
 local main = Instance.new("Frame"); main.Name = "Main"; main.Size = UDim2.new(0, 570, 0, 645); main.Position = UDim2.new(0.06, 0, 0.22, 0)
-main.BackgroundColor3 = Color3.fromRGB(18, 18, 20); main.BorderSizePixel = 0; main.Active = true; main.Draggable = true; main.Parent = sg
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 20); main.BorderSizePixel = 0; main.Active = false; main.Draggable = false; main.Parent = sg
 _G.__AimESP_MainFrame = main
 
 local uiCorner = Instance.new("UICorner", main); uiCorner.CornerRadius = UDim.new(0, 12)
@@ -398,8 +478,31 @@ local uiStroke = Instance.new("UIStroke", main); uiStroke.Thickness = 2; uiStrok
 local titleBar = Instance.new("Frame"); titleBar.Size = UDim2.new(1, 0, 0, 38); titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 32); titleBar.BorderSizePixel = 0; titleBar.Parent = main
 local tbCorner = Instance.new("UICorner", titleBar); tbCorner.CornerRadius = UDim.new(0, 12)
 
+--// --- DRAGGING LOGIC ---
+local dragging = false
+local dragStart = Vector2.new(0,0)
+local startPos = UDim2.new(0,0,0,0)
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+    end
+end)
+titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
 local title = Instance.new("TextLabel"); title.BackgroundTransparency = 1; title.Position = UDim2.new(0, 12, 0, 0); title.Size = UDim2.new(1, -200, 1, 0)
-title.Text = "AldoAimV3"; title.TextXAlignment = Enum.TextXAlignment.Left; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.Font = Enum.Font.GothamBold; title.TextSize = 12; title.Parent = titleBar
+title.Text = "AldoAim 2.5"; title.TextXAlignment = Enum.TextXAlignment.Left; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.Font = Enum.Font.GothamBold; title.TextSize = 12; title.Parent = titleBar
 
 local function topBtn(txt, xOff, isIcon)
 	local b = Instance.new("TextButton"); b.Size = isIcon and UDim2.new(0, 28, 0, 28) or UDim2.new(0, 65, 0, 28); b.Position = UDim2.new(0, xOff, 0, 5); b.Text = txt
@@ -417,11 +520,10 @@ local btnClose = Instance.new("TextButton"); btnClose.Name = "Close"; btnClose.S
 btnClose.Text = "X"; btnClose.BackgroundColor3 = Color3.fromRGB(55,35,35); btnClose.TextColor3 = Color3.fromRGB(255,120,120); btnClose.Font = Enum.Font.GothamBold; btnClose.TextSize = 16; btnClose.Parent = titleBar
 Instance.new("UICorner", btnClose).CornerRadius = UDim.new(0, 6)
 
-local pages = Instance.new("Frame"); pages.Name = "Pages"; pages.Position = UDim2.new(0, 12, 0, 50); pages.Size = UDim2.new(1, -24, 1, -62); pages.BackgroundColor3 = Color3.fromRGB(24, 24, 28); pages.BorderSizePixel = 0; pages.Parent = main
+local pages = Instance.new("Frame"); pages.Position = UDim2.new(0, 12, 0, 50); pages.Size = UDim2.new(1, -24, 1, -62); pages.BackgroundColor3 = Color3.fromRGB(24, 24, 28); pages.BorderSizePixel = 0; pages.Parent = main
 Instance.new("UICorner", pages).CornerRadius = UDim.new(0, 10)
 
 local pageAim = Instance.new("Frame", pages); local pageESP = Instance.new("Frame", pages); local pageMisc = Instance.new("Frame", pages); local pageSettings = Instance.new("Frame", pages)
-pageSettings.Name = "Settings"
 local allPages = { aim = pageAim, esp = pageESP, misc = pageMisc, settings = pageSettings }
 for _, page in pairs(allPages) do page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.Visible = false end
 pageAim.Visible = true
@@ -433,27 +535,61 @@ hint.Font = Enum.Font.Gotham; hint.TextSize = 12; hint.TextXAlignment = Enum.Tex
 
 btnClose.MouseButton1Click:Connect(function()
 	if rsConn then rsConn:Disconnect() end
+	setNoclipEnabled(false)
 	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and originalWalkSpeed then LocalPlayer.Character.Humanoid.WalkSpeed = originalWalkSpeed end
 	for m,_ in pairs(ESP.cache) do removeCache(m) end
 	pcall(function() fovCircle:Remove() end); sg:Destroy()
 end)
 
-local guiElements = {}
+--// --- MODIFIED MK-TOGGLE ---
 local function mkToggle(parent, label, getVal, setVal, y)
 	local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, -24, 0, 34); btn.Position = UDim2.new(0, 12, 0, y); btn.Text = ""; btn.BackgroundColor3 = Color3.fromRGB(34,34,38); btn.Parent = parent
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8); local st = Instance.new("UIStroke", btn); st.Thickness = 1; st.Color = Color3.fromRGB(70,70,74)
+	
 	local lbl = Instance.new("TextLabel"); lbl.BackgroundTransparency = 1; lbl.Size = UDim2.new(1, -12, 1, 0); lbl.Position = UDim2.new(0, 12, 0, 0); lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Text = string.format("%s: %s", label, tostring(getVal())); lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.Parent = btn
-	btn.MouseButton1Click:Connect(function() local new = not getVal(); setVal(new); lbl.Text = string.format("%s: %s", label, tostring(getVal())) end)
-	return {Button = btn, Label = lbl}
+	lbl.Text = label; lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.Parent = btn
+
+	local statusCircle = Instance.new("Frame"); statusCircle.Size = UDim2.new(0, 14, 0, 14); statusCircle.Position = UDim2.new(1, -25, 0.5, -7); statusCircle.BorderSizePixel = 0; statusCircle.Parent = btn
+	Instance.new("UICorner", statusCircle).CornerRadius = UDim.new(1, 0)
+	Instance.new("UIStroke", statusCircle).Color = Color3.fromRGB(18,18,20)
+
+	local function updateVisuals()
+		local value = getVal()
+		if type(value) == "boolean" then
+			statusCircle.Visible = true
+			if value then
+				statusCircle.BackgroundColor3 = Color3.fromRGB(40, 160, 80) -- Green for True
+			else
+				statusCircle.BackgroundColor3 = Color3.fromRGB(80, 80, 80) -- Dark Gray for False
+			end
+			lbl.Text = label -- Keep label simple for boolean toggles
+		else
+			statusCircle.Visible = false -- Hide circle for non-boolean toggles like Aim Part
+			lbl.Text = string.format("%s: %s", label, tostring(value))
+		end
+	end
+
+	btn.MouseButton1Click:Connect(function()
+		local currentValue = getVal()
+		if type(currentValue) == "boolean" then
+			setVal(not currentValue)
+			updateVisuals()
+		end
+	end)
+	
+	updateVisuals() -- Set initial state
+	return {Button = btn, Label = lbl, Update = updateVisuals}
 end
 
+
+--// --- MODIFIED MK-SLIDER ---
 local function mkSlider(parent, label, minV, maxV, step, getV, setV, y)
 	local lbl = Instance.new("TextLabel"); lbl.BackgroundTransparency = 1; lbl.Position = UDim2.new(0, 12, 0, y); lbl.Size = UDim2.new(1, -24, 0, 20); lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label.. ": ".. tostring(getV()); lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.Parent = parent
-	local bar = Instance.new("Frame"); bar.Position = UDim2.new(0, 12, 0, y + 24); bar.Size = UDim2.new(1, -24, 0, 12); bar.BackgroundColor3 = Color3.fromRGB(36,36,40); bar.BorderSizePixel = 0; bar.Parent = parent
+	local bar = Instance.new("Frame"); bar.Position = UDim2.new(0, 12, 0, y + 24); bar.Size = UDim2.new(1, -24, 0, 12); bar.BackgroundColor3 = Color3.fromRGB(18, 18, 20); bar.BorderSizePixel = 0; bar.Parent = parent
 	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
-	local fill = Instance.new("Frame"); fill.BackgroundColor3 = Color3.fromRGB(255, 70, 70); fill.BorderSizePixel = 0; fill.Size = UDim2.new((getV()-minV)/(maxV - minV), 0, 1, 0); fill.Parent = bar
+	local barStroke = Instance.new("UIStroke", bar); barStroke.Thickness = 1; barStroke.Color = Color3.fromRGB(80,80,80)
+	local fill = Instance.new("Frame"); fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255); fill.BorderSizePixel = 0; fill.Size = UDim2.new((getV()-minV)/(maxV - minV), 0, 1, 0); fill.Parent = bar
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 6)
 	local dragging = false
 	local function setFromMouse(x)
@@ -474,8 +610,7 @@ guiElements.aimRadius = mkSlider(pageAim, "FOV Radius", 50, 600, 1, function() r
 guiElements.smoothness = mkSlider(pageAim, "Smoothness (1 = snap)", 0.05, 1.00, 0.01, function() return tonumber(string.format("%.2f", settings.smoothness)) end, function(v) settings.smoothness = tonumber(string.format("%.2f", v)) end, 152)
 local aimParts = {"Head", "UpperTorso", "HumanoidRootPart"}; local currentAimPartIdx = table.find(aimParts, settings.aimPart) or 1
 guiElements.aimPart = mkToggle(pageAim, "Aim Part", function() return settings.aimPart end, function() end, 212)
-guiElements.aimPart.Label.Text = "Aim Part: " .. settings.aimPart
-guiElements.aimPart.Button.MouseButton1Click:Connect(function() currentAimPartIdx = (currentAimPartIdx % #aimParts) + 1; settings.aimPart = aimParts[currentAimPartIdx]; guiElements.aimPart.Label.Text = "Aim Part: " .. settings.aimPart end)
+guiElements.aimPart.Button.MouseButton1Click:Connect(function() currentAimPartIdx = (currentAimPartIdx % #aimParts) + 1; settings.aimPart = aimParts[currentAimPartIdx]; guiElements.aimPart.Update() end)
 
 --// --- Populate ESP Page ---
 guiElements.espEnabled = mkToggle(pageESP, "ESP Enabled", function() return settings.espEnabled end, function(v) settings.espEnabled = v end, 8)
@@ -488,7 +623,9 @@ guiElements.targetPlayers = mkToggle(pageESP, "Include Players", function() retu
 
 --// --- Populate Misc Page ---
 guiElements.flyEnabled = mkToggle(pageMisc, "Fly Enabled", function() return settings.flyEnabled end, setFlyEnabled, 8)
-guiElements.walkSpeed = mkSlider(pageMisc, "Walk Speed", 16, 100, 1, function() return settings.walkSpeed end, function(v) settings.walkSpeed = v; if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = v end end, 50)
+guiElements.noclipEnabled = mkToggle(pageMisc, "Noclip (Walk through walls)", function() return settings.noclipEnabled end, setNoclipEnabled, 50)
+guiElements.walkSpeed = mkSlider(pageMisc, "Walk Speed", 16, 100, 1, function() return settings.walkSpeed end, function(v) settings.walkSpeed = v; if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = v end end, 92)
+guiElements.flySpeed = mkSlider(pageMisc, "Fly Speed", 10, 200, 5, function() return settings.flySpeed end, function(v) settings.flySpeed = v end, 152)
 
 --// --- Populate Settings Page ---
 local function mkButton(parent, text, y, x, w)
@@ -498,7 +635,7 @@ local function mkButton(parent, text, y, x, w)
 	return btn
 end
 
-local configTextBox = Instance.new("TextBox"); configTextBox.Name = "ConfigTextBox"; configTextBox.Size = UDim2.new(1, -24, 0, 60); configTextBox.Position = UDim2.new(0, 12, 0, 8)
+local configTextBox = Instance.new("TextBox"); configTextBox.Size = UDim2.new(1, -24, 0, 60); configTextBox.Position = UDim2.new(0, 12, 0, 8)
 configTextBox.BackgroundColor3 = Color3.fromRGB(34,34,38); configTextBox.TextColor3 = Color3.fromRGB(220,220,220); configTextBox.Font = Enum.Font.Code; configTextBox.TextSize = 14
 configTextBox.ClearTextOnFocus = false; configTextBox.PlaceholderText = "Paste config string here..."; configTextBox.TextXAlignment = Enum.TextXAlignment.Left; configTextBox.TextYAlignment = Enum.TextYAlignment.Top; configTextBox.MultiLine = true; configTextBox.Parent = pageSettings
 Instance.new("UICorner", configTextBox).CornerRadius = UDim.new(0, 8); local tbStroke = Instance.new("UIStroke", configTextBox); tbStroke.Thickness = 1; tbStroke.Color = Color3.fromRGB(70,70,74)
@@ -520,12 +657,21 @@ guiElements.toggleFlyKeybind = mkKeybind(pageSettings, "toggleFly", "Toggle Fly"
 --// --- FIXED: Config System Logic ---
 local function updateGUIFromSettings()
 	for name, element in pairs(guiElements) do
-		if element.Label and element.Button then local value = settings[name]; if value ~= nil then element.Label.Text = element.Label.Text:match("(.+):") .. " " .. tostring(value) end end
-		if element.Label and element.Fill then local value = settings[name]; if value ~= nil then element.Label.Text = element.Label.Text:match("(.+):") .. " " .. tostring(value); element.Fill.Size = UDim2.new((value - element.Min) / (element.Max - element.Min), 0, 1, 0) end end
+		if element.Update then -- For toggles
+			element.Update()
+		end
+		if element.Label and element.Fill then -- For sliders
+			local value = settings[name]
+			if value ~= nil then
+				element.Label.Text = element.Label.Text:match("(.+):") .. " " .. tostring(value)
+				element.Fill.Size = UDim2.new((value - element.Min) / (element.Max - element.Min), 0, 1, 0)
+			end
+		end
 	end
-	guiElements.toggleGUIKeybind.Text = settings.keybinds.toggleGUI.Name; guiElements.toggleFlyKeybind.Text = settings.keybinds.toggleFly.Name
-	guiElements.aimPart.Label.Text = "Aim Part: " .. settings.aimPart
+	guiElements.toggleGUIKeybind.Text = settings.keybinds.toggleGUI.Name
+	guiElements.toggleFlyKeybind.Text = settings.keybinds.toggleFly.Name
 end
+
 
 saveBtn.MouseButton1Click:Connect(function()
 	if setclipboard then
