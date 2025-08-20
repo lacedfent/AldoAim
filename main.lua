@@ -1,16 +1,16 @@
 --// Services
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local UIS          = game:GetService("UserInputService")
-local Camera       = workspace.CurrentCamera
-local LocalPlayer  = Players.LocalPlayer
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
 --// SETTINGS (live-updated by GUI)
 local settings = {
     -- Aimbot
-    camlock    = true,
-    fovCircle  = true,
-    aimRadius  = 150,   -- px
+    camlock = true,
+    fovCircle = true,
+    aimRadius = 150,   -- px
     smoothness = 1.00,  -- 1.00 = snap
 
     -- Fly
@@ -19,11 +19,11 @@ local settings = {
 
     -- ESP
     espEnabled = true,
-    boxESP     = true,
-    skelESP    = true,
+    boxESP = true,
+    skelESP = true,
 
     -- Targeting
-    targetNPCs    = true,  -- include NPCs/dummies
+    targetNPCs = true,  -- include NPCs/dummies
     targetPlayers = true,  -- include players
 }
 
@@ -77,7 +77,7 @@ local function disableFly()
     end
     if humanoid then
         pcall(function() humanoid.PlatformStand = false end)
-        local animate = hrp and hrp.Parent and hrp.Parent:FindFirstChild("Animate")
+        local animate = hrp and hrp.Parent and hrp:FindFirstChild("Animate")
         if animate then pcall(function() animate.Disabled = false end) end
     end
 end
@@ -112,6 +112,21 @@ if LocalPlayer.Character then
     onCharacterAdded(LocalPlayer.Character)
 end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        task.wait(1) -- wait for parts to exist
+        updateHitbox(char)
+    end)
+end)
+
+-- Also update respawns of existing players
+for _, player in ipairs(Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        updateHitbox(char)
+    end)
+end
 
 --// Aimbot/ESP (fixed)
 local function isAlive(hum)
@@ -161,6 +176,33 @@ local function isValidTarget(model)
     return true
 end
 
+local function updateHitbox(char)
+    if not char or not char:IsA("Model") then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local multiplier = settings.hitboxEnabled and settings.hitboxScale or 1
+    for _, part in ipairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            -- Store original size if not stored
+            if not part:FindFirstChild("_OriginalSize") then
+                local os = Instance.new("Vector3Value")
+                os.Name = "_OriginalSize"
+                os.Value = part.Size
+                os.Parent = part
+            end
+            part.Size = part:FindFirstChild("_OriginalSize").Value * multiplier
+        end
+    end
+end
+
+function updateAllHitboxes()
+    for _, char in ipairs(workspace:GetChildren()) do
+        if char:IsA("Model") and char ~= LocalPlayer.Character then
+            updateHitbox(char)
+        end
+    end
+end
+
 local ESP = { cache = {} } -- [model] = {box=Square, lines={Line...}}
 local function newLine()
     local ln = Drawing.new("Line")
@@ -198,24 +240,22 @@ local function removeCache(model)
     ESP.cache[model] = nil
 end
 local function getBoundPoints(model)
-    local parts = {}
+    local pts = {}
     local names = {
-        "Head","HumanoidRootPart","UpperTorso","LowerTorso","Torso",
-        "LeftUpperArm","LeftLowerArm","LeftHand","RightUpperArm","RightLowerArm","RightHand",
-        "LeftUpperLeg","LeftLowerLeg","LeftFoot","RightUpperLeg","RightLowerLeg","RightFoot",
-        "Left Arm","Right Arm","Left Leg","Right Leg"
+        "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso",
+        "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",
+        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",
+        "Left Arm", "Right Arm", "Left Leg", "Right Leg"
     }
     for _, n in ipairs(names) do
         local p = model:FindFirstChild(n)
-        if p and p:IsA("BasePart") then table.insert(parts, p) end
+        if p and p:IsA("BasePart") then table.insert(pts, p.Position) end
     end
-    if #parts == 0 then
+    if #pts == 0 then
         for _, d in ipairs(model:GetDescendants()) do
-            if d:IsA("BasePart") then table.insert(parts, d) end
+            if d:IsA("BasePart") then table.insert(pts, d.Position) end
         end
     end
-    local pts = {}
-    for _, p in ipairs(parts) do table.insert(pts, p.Position) end
     return pts
 end
 local function getBones(model)
@@ -224,7 +264,7 @@ local function getBones(model)
     local head = gp("Head")
     local ut, lt = gp("UpperTorso"), gp("LowerTorso")
     local torso = gp("Torso")
-    local hrpLocal   = gp("HumanoidRootPart")
+    local hrpLocal = gp("HumanoidRootPart")
 
     local LUA, LLA, LH = gp("LeftUpperArm"), gp("LeftLowerArm"), gp("LeftHand")
     local RUA, RLA, RH = gp("RightUpperArm"), gp("RightLowerArm"), gp("RightHand")
@@ -370,7 +410,7 @@ end)
 local rsConn
 rsConn = RunService.RenderStepped:Connect(function(delta)
     fovCircle.Visible = settings.fovCircle
-    fovCircle.Radius  = settings.aimRadius
+    fovCircle.Radius = settings.aimRadius
     fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
     targetModel = getClosestTarget()
@@ -398,15 +438,11 @@ rsConn = RunService.RenderStepped:Connect(function(delta)
 end)
 
 --// GUI creation (kept layout; I only hook the fly toggle/slider)
--- Inserted (unchanged) GUI code from your original message, then hook toggles below.
--- (For brevity here I will reuse your GUI creation exactly as you provided earlier.)
--- ---------- START GUI (copied from your GUI block) ----------
 local sg = Instance.new("ScreenGui")
 sg.Name = "AimESP_UI"
 sg.ResetOnSpawn = false
 sg.IgnoreGuiInset = true
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Global
--- safe parent
 local function safeParentGui(gui)
     local ok, cg = pcall(function() return game:GetService("CoreGui") end)
     if ok and cg then gui.Parent = cg else gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
@@ -423,6 +459,7 @@ main.Active = true
 main.Draggable = true
 main.Parent = sg
 _G.__AimESP_MainFrame = main
+local originalSize = main.Size
 
 local uiCorner = Instance.new("UICorner", main) uiCorner.CornerRadius = UDim.new(0, 12)
 local uiStroke = Instance.new("UIStroke", main) uiStroke.Thickness = 2 uiStroke.Color = Color3.fromRGB(60,60,60)
@@ -438,11 +475,11 @@ local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
 title.Position = UDim2.new(0, 12, 0, 0)
 title.Size = UDim2.new(1, -110, 1, 0)
-title.Text = "AldoAim 2.0"
+title.Text = "AldoAim 2.5"
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
-title.TextSize = 16
+title.TextSize = 12
 title.Parent = titleBar
 
 local function topBtn(txt, xOff)
@@ -460,21 +497,37 @@ local function topBtn(txt, xOff)
     return b
 end
 
-local tabAimbotBtn = topBtn("Aimbot", 160)
-local tabESPBtn    = topBtn("ESP", 235)
+local tabAimbotBtn = topBtn("Aimbot", 90)
+local tabESPBtn = topBtn("ESP", 165)
+local tabMiscBtn = topBtn("Misc", 240)
 
-local btnMin = Instance.new("TextButton")
-btnMin.Size = UDim2.new(0, 28, 0, 28)
-btnMin.Position = UDim2.new(1, -66, 0, 5)
-btnMin.Text = "-"
-btnMin.BackgroundColor3 = Color3.fromRGB(45,45,50)
-btnMin.TextColor3 = Color3.fromRGB(255,255,255)
-btnMin.Font = Enum.Font.GothamBold
-btnMin.TextSize = 18
-btnMin.Parent = titleBar
-Instance.new("UICorner", btnMin).CornerRadius = UDim.new(0, 6)
+local btnMinimize = Instance.new("TextButton")
+btnMinimize.Name = "Minimize"
+btnMinimize.Size = UDim2.new(0, 28, 0, 28)
+btnMinimize.Position = UDim2.new(1, -66, 0, 5)
+btnMinimize.Text = "—"
+btnMinimize.BackgroundColor3 = Color3.fromRGB(45,45,50)
+btnMinimize.TextColor3 = Color3.fromRGB(255,255,255)
+btnMinimize.Font = Enum.Font.GothamBold
+btnMinimize.TextSize = 18
+btnMinimize.Parent = titleBar
+Instance.new("UICorner", btnMinimize).CornerRadius = UDim.new(0, 6)
+
+local btnMaximize = Instance.new("TextButton")
+btnMaximize.Name = "Maximize"
+btnMaximize.Size = UDim2.new(0, 28, 0, 28)
+btnMaximize.Position = UDim2.new(1, -66, 0, 5)
+btnMaximize.Text = "+"
+btnMaximize.BackgroundColor3 = Color3.fromRGB(45,45,50)
+btnMaximize.TextColor3 = Color3.fromRGB(255,255,255)
+btnMaximize.Font = Enum.Font.GothamBold
+btnMaximize.TextSize = 18
+btnMaximize.Parent = titleBar
+btnMaximize.Visible = false
+Instance.new("UICorner", btnMaximize).CornerRadius = UDim.new(0, 6)
 
 local btnClose = Instance.new("TextButton")
+btnClose.Name = "Close"
 btnClose.Size = UDim2.new(0, 28, 0, 28)
 btnClose.Position = UDim2.new(1, -34, 0, 5)
 btnClose.Text = "X"
@@ -485,21 +538,7 @@ btnClose.TextSize = 16
 btnClose.Parent = titleBar
 Instance.new("UICorner", btnClose).CornerRadius = UDim.new(0, 6)
 
-btnMin.MouseButton1Click:Connect(function() main.Visible = false end)
-btnClose.MouseButton1Click:Connect(function()
-    if rsConn then rsConn:Disconnect() end
-    for m,_ in pairs(ESP.cache) do removeCache(m) end
-    pcall(function() fovCircle:Remove() end)
-    sg:Destroy()
-end)
-
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightControl then
-        main.Visible = not main.Visible
-    end
-end)
-
+local isMinimized = false
 local pages = Instance.new("Frame")
 pages.Position = UDim2.new(0, 12, 0, 50)
 pages.Size = UDim2.new(1, -24, 1, -62)
@@ -517,12 +556,79 @@ pageESP.Size = UDim2.new(1, 0, 1, 0)
 pageESP.BackgroundTransparency = 1
 pageESP.Visible = false
 
+local pageMisc = Instance.new("Frame", pages)
+pageMisc.Size = UDim2.new(1, 0, 1, 0)
+pageMisc.BackgroundTransparency = 1
+pageMisc.Visible = false
+
+local hint = Instance.new("TextLabel")
+hint.BackgroundTransparency = 1
+hint.Position = UDim2.new(0, 12, 1, -22)
+hint.Size = UDim2.new(1, -24, 0, 16)
+hint.Font = Enum.Font.Gotham
+hint.TextSize = 12
+hint.TextXAlignment = Enum.TextXAlignment.Left
+hint.TextColor3 = Color3.fromRGB(200,200,205)
+hint.Text = "dont steal this pls"
+hint.Parent = main
+
+local function setPagesVisible(visible)
+    pages.Visible = visible
+    hint.Visible = visible
+end
+
+btnMinimize.MouseButton1Click:Connect(function()
+    if not isMinimized then
+        setPagesVisible(false)
+        main:TweenSize(UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, 38), "Out", "Quad", 0.3)
+        wait(0.3)
+        btnMinimize.Visible = false
+        btnMaximize.Visible = true
+        isMinimized = true
+    end
+end)
+
+btnMaximize.MouseButton1Click:Connect(function()
+    if isMinimized then
+        main:TweenSize(originalSize, "Out", "Quad", 0.3)
+        wait(0.3)
+        btnMaximize.Visible = false
+        btnMinimize.Visible = true
+        setPagesVisible(true)
+        isMinimized = false
+    end
+end)
+
+btnClose.MouseButton1Click:Connect(function()
+    if rsConn then rsConn:Disconnect() end
+    for m,_ in pairs(ESP.cache) do removeCache(m) end
+    pcall(function() fovCircle:Remove() end)
+    sg:Destroy()
+end)
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        main.Visible = not main.Visible
+    elseif input.KeyCode == Enum.KeyCode.RightShift then
+        if isMinimized then
+            btnMaximize.MouseButton1Click:Fire()
+        else
+            btnMinimize.MouseButton1Click:Fire()
+        end
+    end
+end)
+
+settings.hitboxEnabled = false
+settings.hitboxScale = 2
 local function showPage(which)
     pageAim.Visible = (which == "aim")
     pageESP.Visible = (which == "esp")
+    pageMisc.Visible = (which == "misc")
 end
 tabAimbotBtn.MouseButton1Click:Connect(function() showPage("aim") end)
 tabESPBtn.MouseButton1Click:Connect(function() showPage("esp") end)
+tabMiscBtn.MouseButton1Click:Connect(function() showPage("misc") end)
 
 local function mkToggle(parent, label, getVal, setVal, y)
     local btn = Instance.new("TextButton")
@@ -609,7 +715,6 @@ local function mkSlider(parent, label, minV, maxV, step, getV, setV, y)
     end)
 end
 
--- Hook existing toggles/sliders you had
 mkToggle(pageAim, "Aimbot (hold RMB)", function() return settings.camlock end, function(v) settings.camlock = v end, 8)
 mkToggle(pageAim, "Show FOV Circle", function() return settings.fovCircle end, function(v) settings.fovCircle = v end, 50)
 mkSlider(pageAim, "FOV Radius", 50, 600, 1,
@@ -623,35 +728,16 @@ mkSlider(pageAim, "Smoothness (1 = snap)", 0.05, 1.00, 0.01,
     154
 )
 
--- HERE: Fly toggle + speed slider hooked to working functions
-mkToggle(pageAim, "Enable Fly",
-    function() return settings.flyEnabled end,
-    function(v) setFlyEnabled(v) end,
-    200
-)
-mkSlider(pageAim, "Fly Speed", 10, 200, 1,
-    function() return settings.flySpeed end,
-    function(v) settings.flySpeed = v end,
-    244
-)
-
 mkToggle(pageESP, "ESP Enabled", function() return settings.espEnabled end, function(v) settings.espEnabled = v end, 8)
 mkToggle(pageESP, "Box ESP", function() return settings.boxESP end, function(v) settings.boxESP = v end, 50)
 mkToggle(pageESP, "Skeleton ESP", function() return settings.skelESP end, function(v) settings.skelESP = v end, 92)
 mkToggle(pageESP, "Include NPCs/Dummies", function() return settings.targetNPCs end, function(v) settings.targetNPCs = v end, 134)
 mkToggle(pageESP, "Include Players", function() return settings.targetPlayers end, function(v) settings.targetPlayers = v end, 176)
-
--- Reset on respawn is handled by onCharacterAdded above
-
-local hint = Instance.new("TextLabel")
-hint.BackgroundTransparency = 1
-hint.Position = UDim2.new(0, 12, 1, -22)
-hint.Size = UDim2.new(1, -24, 0, 16)
-hint.Font = Enum.Font.Gotham
-hint.TextSize = 12
-hint.TextXAlignment = Enum.TextXAlignment.Left
-hint.TextColor3 = Color3.fromRGB(200,200,205)
-hint.Text = "dont steal this pls"
-hint.Parent = main
-
--- END of script
+mkToggle(pageMisc, "Hitbox Expander", 
+    function() return settings.hitboxEnabled end, 
+    function(v)
+        settings.hitboxEnabled = v
+        updateAllHitboxes()
+    end, 
+    8
+)
