@@ -289,7 +289,9 @@ local sg = Instance.new("ScreenGui"); sg.Name = "AimESP_UI"; sg.ResetOnSpawn = f
 local function safeParentGui(gui) local ok, cg = pcall(function() return game:GetService("CoreGui") end); if ok and cg then gui.Parent = cg else gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end end
 safeParentGui(sg)
 
-local main = Instance.new("Frame"); main.Name = "Main"; main.Size = UDim2.new(0, 570, 0, 645); main.Position = UDim2.new(0.06, 0, 0.22, 0); main.BackgroundColor3 = Color3.fromRGB(18, 18, 20); main.BorderSizePixel = 0; main.Active = false; main.Draggable = false; main.Parent = sg; _G.__AimESP_MainFrame = main
+
+-- Sidebar GUI layout (from arsenal.lua, adapted)
+local main = Instance.new("Frame"); main.Name = "Main"; main.Size = UDim2.new(0, 700, 0, 645); main.Position = UDim2.new(0.06, 0, 0.22, 0); main.BackgroundColor3 = Color3.fromRGB(18, 18, 20); main.BorderSizePixel = 0; main.Active = true; main.Draggable = false; main.Parent = sg; _G.__AimESP_MainFrame = main
 local uiCorner = Instance.new("UICorner", main); uiCorner.CornerRadius = UDim.new(0, 12)
 local uiStroke = Instance.new("UIStroke", main); uiStroke.Thickness = 2; uiStroke.Color = Color3.fromRGB(60,60,60)
 local titleBar = Instance.new("Frame"); titleBar.Size = UDim2.new(1, 0, 0, 38); titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 32); titleBar.BorderSizePixel = 0; titleBar.Parent = main
@@ -301,10 +303,36 @@ titleBar.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserI
 UIS.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart; main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
 
 local title = Instance.new("TextLabel"); title.BackgroundTransparency = 1; title.Position = UDim2.new(0, 12, 0, 0); title.Size = UDim2.new(1, -200, 1, 0); title.Text = "AldoAimV3.1"; title.TextXAlignment = Enum.TextXAlignment.Left; title.TextColor3 = Color3.fromRGB(255, 255, 255); title.Font = Enum.Font.GothamBold; title.TextSize = 12; title.Parent = titleBar
-local function topBtn(txt, xOff, isIcon) local b = Instance.new("TextButton"); b.Size = isIcon and UDim2.new(0, 28, 0, 28) or UDim2.new(0, 65, 0, 28); b.Position = UDim2.new(0, xOff, 0, 5); b.Text = txt; b.BackgroundColor3 = Color3.fromRGB(38,38,42); b.TextColor3 = Color3.fromRGB(255,255,255); b.Font = isIcon and Enum.Font.SourceSansBold or Enum.Font.GothamBold; b.TextSize = isIcon and 20 or 14; b.Parent = titleBar; local c = Instance.new("UICorner", b); c.CornerRadius = UDim.new(0, 6); local s = Instance.new("UIStroke", b); s.Thickness = 1; s.Color = Color3.fromRGB(70,70,72); return b end
-local tabAimbotBtn = topBtn("Aimbot", 150); local tabESPBtn = topBtn("ESP", 220); local tabMiscBtn = topBtn("Misc", 290); local tabSettingsBtn = topBtn("⚙", 360, true)
+
+-- Sidebar
+local sidebar = Instance.new("Frame"); sidebar.Name = "Sidebar"; sidebar.Position = UDim2.new(0, 12, 0, 50); sidebar.Size = UDim2.new(0, 130, 1, -62); sidebar.BackgroundColor3 = Color3.fromRGB(24, 24, 28); sidebar.BorderSizePixel = 0; sidebar.Parent = main; Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 10)
+
+local function sideBtn(txt, yOff, isIcon)
+	local b = Instance.new("TextButton");
+	b.Size = isIcon and UDim2.new(0, 28, 0, 28) or UDim2.new(0, 114, 0, 36)
+	b.Position = UDim2.new(0.5, -57, 0, yOff)
+	b.Text = txt
+	b.BackgroundColor3 = Color3.fromRGB(38,38,42)
+	b.TextColor3 = Color3.fromRGB(255,255,255)
+	b.Font = isIcon and Enum.Font.SourceSansBold or Enum.Font.GothamBold
+	b.TextSize = isIcon and 20 or 14
+	b.Parent = sidebar
+	local c = Instance.new("UICorner", b); c.CornerRadius = UDim.new(0, 6)
+	local s = Instance.new("UIStroke", b); s.Thickness = 1; s.Color = Color3.fromRGB(70,70,72)
+	return b
+end
+
+local buttonSpacing = 8
+local buttonHeight = 36
+local tabAimbotBtn = sideBtn("Aimbot", buttonSpacing)
+local tabESPBtn = sideBtn("ESP", buttonSpacing * 2 + buttonHeight)
+local tabMiscBtn = sideBtn("Misc", buttonSpacing * 3 + buttonHeight * 2)
+local tabSettingsBtn = sideBtn("⚙", sidebar.Size.Y.Offset - (buttonHeight + buttonSpacing), true)
+
 local btnClose = Instance.new("TextButton"); btnClose.Name = "Close"; btnClose.Size = UDim2.new(0, 28, 0, 28); btnClose.Position = UDim2.new(1, -34, 0, 5); btnClose.Text = "X"; btnClose.BackgroundColor3 = Color3.fromRGB(55,35,35); btnClose.TextColor3 = Color3.fromRGB(255,120,120); btnClose.Font = Enum.Font.GothamBold; btnClose.TextSize = 16; btnClose.Parent = titleBar; Instance.new("UICorner", btnClose).CornerRadius = UDim.new(0, 6)
-local pages = Instance.new("Frame"); pages.Position = UDim2.new(0, 12, 0, 50); pages.Size = UDim2.new(1, -24, 1, -62); pages.BackgroundColor3 = Color3.fromRGB(24, 24, 28); pages.BorderSizePixel = 0; pages.Parent = main; Instance.new("UICorner", pages).CornerRadius = UDim.new(0, 10)
+
+-- Pages area
+local pages = Instance.new("Frame"); pages.Position = UDim2.new(0, 12 + 130 + 12, 0, 50); pages.Size = UDim2.new(1, -(12 + 130 + 12 + 12), 1, -62); pages.BackgroundColor3 = Color3.fromRGB(24, 24, 28); pages.BorderSizePixel = 0; pages.Parent = main; Instance.new("UICorner", pages).CornerRadius = UDim.new(0, 10)
 local pageAim = Instance.new("Frame", pages); local pageESP = Instance.new("Frame", pages); local pageMisc = Instance.new("Frame", pages); local pageSettings = Instance.new("Frame", pages); local allPages = { aim = pageAim, esp = pageESP, misc = pageMisc, settings = pageSettings }; for _, page in pairs(allPages) do page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.Visible = false end; pageAim.Visible = true
 local function showPage(pageName) for name, page in pairs(allPages) do page.Visible = (name == pageName) end end
 tabAimbotBtn.MouseButton1Click:Connect(function() showPage("aim") end); tabESPBtn.MouseButton1Click:Connect(function() showPage("esp") end); tabMiscBtn.MouseButton1Click:Connect(function() showPage("misc") end); tabSettingsBtn.MouseButton1Click:Connect(function() showPage("settings") end)
