@@ -307,10 +307,19 @@ local title = Instance.new("TextLabel"); title.BackgroundTransparency = 1; title
 -- Sidebar
 local sidebar = Instance.new("Frame"); sidebar.Name = "Sidebar"; sidebar.Position = UDim2.new(0, 12, 0, 50); sidebar.Size = UDim2.new(0, 130, 1, -62); sidebar.BackgroundColor3 = Color3.fromRGB(24, 24, 28); sidebar.BorderSizePixel = 0; sidebar.Parent = main; Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 10)
 
-local function sideBtn(txt, yOff, isIcon)
-	local b = Instance.new("TextButton");
-	b.Size = isIcon and UDim2.new(0, 28, 0, 28) or UDim2.new(0, 114, 0, 36)
-	b.Position = UDim2.new(0.5, -57, 0, yOff)
+
+local function sideBtn(txt, idx, isIcon)
+	local b = Instance.new("TextButton")
+	local buttonHeight = 36
+	local buttonSpacing = 8
+	if isIcon then
+		b.Size = UDim2.new(0, 28, 0, 28)
+		-- Place at bottom of sidebar
+		b.Position = UDim2.new(0.5, -14, 1, -(28 + buttonSpacing))
+	else
+		b.Size = UDim2.new(0, 114, 0, buttonHeight)
+		b.Position = UDim2.new(0.5, -57, 0, buttonSpacing + (idx-1)*(buttonHeight+buttonSpacing))
+	end
 	b.Text = txt
 	b.BackgroundColor3 = Color3.fromRGB(38,38,42)
 	b.TextColor3 = Color3.fromRGB(255,255,255)
@@ -322,12 +331,10 @@ local function sideBtn(txt, yOff, isIcon)
 	return b
 end
 
-local buttonSpacing = 8
-local buttonHeight = 36
-local tabAimbotBtn = sideBtn("Aimbot", buttonSpacing)
-local tabESPBtn = sideBtn("ESP", buttonSpacing * 2 + buttonHeight)
-local tabMiscBtn = sideBtn("Misc", buttonSpacing * 3 + buttonHeight * 2)
-local tabSettingsBtn = sideBtn("⚙", sidebar.Size.Y.Offset - (buttonHeight + buttonSpacing), true)
+local tabAimbotBtn = sideBtn("Aimbot", 1)
+local tabESPBtn = sideBtn("ESP", 2)
+local tabMiscBtn = sideBtn("Misc", 3)
+local tabSettingsBtn = sideBtn("⚙", 0, true)
 
 local btnClose = Instance.new("TextButton"); btnClose.Name = "Close"; btnClose.Size = UDim2.new(0, 28, 0, 28); btnClose.Position = UDim2.new(1, -34, 0, 5); btnClose.Text = "X"; btnClose.BackgroundColor3 = Color3.fromRGB(55,35,35); btnClose.TextColor3 = Color3.fromRGB(255,120,120); btnClose.Font = Enum.Font.GothamBold; btnClose.TextSize = 16; btnClose.Parent = titleBar; Instance.new("UICorner", btnClose).CornerRadius = UDim.new(0, 6)
 
@@ -400,7 +407,7 @@ guiElements.fov = mkSlider(pageMisc, "Field of View", 70, 120, 1, function() ret
 local configTextBox = Instance.new("TextBox"); configTextBox.Size = UDim2.new(1, -24, 0, 60); configTextBox.Position = UDim2.new(0, 12, 0, 8); configTextBox.BackgroundColor3 = Color3.fromRGB(34,34,38); configTextBox.TextColor3 = Color3.fromRGB(220,220,220); configTextBox.Font = Enum.Font.Code; configTextBox.TextSize = 14; configTextBox.ClearTextOnFocus = false; configTextBox.PlaceholderText = "Paste config string here..."; configTextBox.TextXAlignment = Enum.TextXAlignment.Left; configTextBox.TextYAlignment = Enum.TextYAlignment.Top; configTextBox.MultiLine = true; configTextBox.Parent = pageSettings; Instance.new("UICorner", configTextBox).CornerRadius = UDim.new(0, 8); local tbStroke = Instance.new("UIStroke", configTextBox); tbStroke.Thickness = 1; tbStroke.Color = Color3.fromRGB(70,70,74)
 local saveBtn, saveBtnStroke = mkButton(pageSettings, "Copy Config to Clipboard", 76, 12, 260)
 local loadBtn, loadBtnStroke = mkButton(pageSettings, "Load Config from Textbox", 76, 282, 260)
-guiElements.toggleGUIKeybind = mkKeybind(pageSettings, "toggleGUI", "Toggle GUI", 120)
+guiElements.toggleGUIKeybind = mkKeybind(pageSettings, "toggleGUI", "Toggle GUI (default: RightControl)", 120)
 guiElements.toggleFlyKeybind = mkKeybind(pageSettings, "toggleFly", "Toggle Fly", 162)
 local legitBtn, legitBtnStroke = mkButton(pageSettings, "Load Legit Config", 212, 12, 260)
 local rageBtn, rageBtnStroke = mkButton(pageSettings, "Load Rage Config", 212, 282, 260)

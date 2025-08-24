@@ -522,7 +522,7 @@ guiElements.fov = mkSlider(pageMisc, "Field of View", 70, 120, 1, function() ret
 local configTextBox = Instance.new("TextBox"); configTextBox.Size = UDim2.new(1, -24, 0, 60); configTextBox.Position = UDim2.new(0, 12, 0, 8); configTextBox.BackgroundColor3 = Color3.fromRGB(34,34,38); configTextBox.TextColor3 = Color3.fromRGB(220,220,220); configTextBox.Font = Enum.Font.Code; configTextBox.TextSize = 14; configTextBox.ClearTextOnFocus = false; configTextBox.PlaceholderText = "Paste config string here..."; configTextBox.TextXAlignment = Enum.TextXAlignment.Left; configTextBox.TextYAlignment = Enum.TextYAlignment.Top; configTextBox.MultiLine = true; configTextBox.Parent = pageSettings; Instance.new("UICorner", configTextBox).CornerRadius = UDim.new(0, 8); local tbStroke = Instance.new("UIStroke", configTextBox); tbStroke.Thickness = 1; tbStroke.Color = Color3.fromRGB(70,70,74)
 local saveBtn, saveBtnStroke = mkButton(pageSettings, "Copy Config to Clipboard", 76, 12, 260)
 local loadBtn, loadBtnStroke = mkButton(pageSettings, "Load Config from Textbox", 76, 282, 260)
-guiElements.toggleGUIKeybind = mkKeybind(pageSettings, "toggleGUI", "Toggle GUI", 120)
+guiElements.toggleGUIKeybind = mkKeybind(pageSettings, "toggleGUI", "Toggle GUI (default: RightControl)", 120)
 guiElements.toggleFlyKeybind = mkKeybind(pageSettings, "toggleFly", "Toggle Fly", 162)
 guiElements.aimbotKeyKeybind = mkKeybind(pageSettings, "aimbotKey", "Aimbot Key", 204)
 local legitBtn, legitBtnStroke = mkButton(pageSettings, "Load Legit Config", 254, 12, 260)
